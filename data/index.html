@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta name = 'viewport' content='width=device-width' charset = "utf-8">
+
+		<script type="text/javascript" src="jquery.min.js"></script>
+
+		<script type="text/javascript" src="GaugeOptVoltage.js"></script>	
+		<script type="text/javascript" src="GaugeOptCurrent.js"></script>
+		<script type="text/javascript" src="GaugeOptPower.js"></script>
+		<script type="text/javascript" src="GaugeOptFreq.js"></script>
+		<script type="text/javascript" src="GaugeOptPF.js"></script>
+
+		<script type="text/javascript" src="gauge.min.js"></script>				
+
+		<style type="text/css">
+			* {box-sizing: border-box}
+
+			.container {
+				max-width: 500px; /* Ширина элемента в пикселах */
+				padding: 1px; /* Поля вокруг текста */
+				margin: auto; /* Выравниваем по центру */
+			}
+
+			/* Set height of body and the document to 100% */
+			body, html {
+				height: 100%;
+				margin: 0;
+				-padding: 8px;
+				font-family: 'Courier New', Courier, monospace;
+				background-color: #2e2e2e;
+			}
+
+			.input {
+				width: 100%;
+			}
+
+			table, th, td {
+				-all: none;
+				-border-collapse: collapse;	
+				color: #97bbdd;
+				width: 100%;
+			}
+			th, td {
+				-padding: 4px;
+				text-align: center;	
+				vertical-align: middle;
+			}
+			th {
+				text-align: center;
+			}
+			tr {
+				-padding: 4px;	
+			}
+			.footer {
+				position: absolute;
+				left: 0;
+				bottom: 0;
+				width: 100%;
+				-height: 80px;
+			}
+			.mtable {
+				-border: 1px solid #ccc;
+				color: #97bbdd;
+				width: 100%;
+			}
+			.mtable th, td {
+				padding: 4px;
+				border: 1px solid #ccc;
+				-text-align: center;	
+				-vertical-align: middle;
+				width: auto;
+			}
+			/* Style the tab */
+			.tab {
+				overflow: hidden;
+				-border: 1px solid #ccc;
+				background-color: #7a7a7a;
+			}
+			/* Style the buttons inside the tab */
+			.tab button {
+				background-color: inherit;
+				float: left;
+				border: none;
+				outline: none;
+				cursor: pointer;
+				padding: 8px 8px;
+				transition: 0.5s;
+				font-size: 1.5em;
+				width: 50%;
+			}
+			/* Change background color of buttons on hover */
+			.tab button:hover {
+				background-color: #ddd;
+			}
+			/* Create an active/current tablink class */
+			.tab button.active {
+				background-color: #ccc;
+			}
+			/* Style the tab content */
+			.tabcontent {
+				display: none;
+				padding-top: 8px;
+				-border: 1px solid #ccc;
+				border-top: none;
+				color: #97bbdd;
+				text-align: center;
+			}
+			body, html {
+				-color: #333538;
+				-font-family: 'Lato', sans-serif;
+				line-height: 1.0;
+				padding: 0;
+				margin: 0;
+			}
+			a {
+				color: #f27173;
+				text-decoration: none;
+			}
+			a:hover {
+				color: #e25f5f;
+				text-decoration: underline;
+			}
+			.content {
+				max-width: 800px;
+				margin: auto;
+				padding: 4px 4px;
+			}
+			.header {
+				text-align: center;
+				padding: 8px 0;
+				background-color: #36A2EB;
+			}
+			.wrapper {
+				min-height: 50px;
+				padding: 4px 0;
+				position: relative;
+			}
+			.wrapper.col-2 {
+				display: inline-block;
+				min-height: 256px;
+				width: 49%;
+			}
+			@media (max-width: 400px) {
+				.wrapper.col-2 {
+					width: 100%
+				}
+			}
+			.wrapper canvas {
+				-moz-user-select: none;
+				-webkit-user-select: none;
+				-ms-user-select: none;
+			}
+			.toolbar {
+				display: flex;
+			}
+			.toolbar > * {
+				margin: 0px;
+			}
+		</style>
+		
+	</head>
+	<body onload='process();'>
+		<div class="container">
+			<div class="tab">
+				<button class="tablinks" onclick="openTab(event, 'Meters')" id="defaultOpen">Meters</button>
+				<button class="tablinks" onclick="openTab(event, 'Settings')">Settings</button>
+			</div>
+			
+			<div id="Meters" class="tabcontent">
+				<table class="mtable">
+					<tr>
+						<td>
+							Voltage
+							<br>
+							<canvas width="150" height="80" id="voltageGauge"></canvas>
+							<div id="voltageGaugeNum" style="font-size: 32px;">...</div>V
+						</td>
+						<td>
+							Current
+							<br>
+							<canvas width="150" height="80" id="currentGauge"></canvas>
+							<div id="currentGaugeNum" style="font-size: 32px;">...</div>A
+					</tr>
+					<tr>
+						<td>
+							Power
+							<br>
+							<canvas width="150" height="80" id="powerGauge"></canvas>
+							<div id="powerGaugeNum" style="font-size: 32px;">...</div>kVA
+						</td>
+						<td>
+							Power factor
+							<br>
+							<canvas width="150" height="80" id="pfGauge"></canvas>
+							<div id="pfGaugeNum" style="font-size: 32px;">...</div>pf
+						</td>
+					</tr>
+					<tr>
+						<td>
+							Frequency
+							<br>
+							<canvas width="150" height="80" id="freqGauge"></canvas>
+							<div id="freqGaugeNum" style="font-size: 32px;">...</div>Hz
+						</td>
+						<td>
+							Energy meter
+							<br><br>
+							<div id="energyGaugeNum" style="font-size: 42px; color: crimson;">...</div>kW/h
+							<br>
+							<br><button value ='rstEnergy' type='button' onclick="push_butt(this.value)">Reset</button>
+						</td>
+					</tr>
+				</table>		
+			</div>			
+			
+			<div id="Settings" class="tabcontent" style='text-align: center;'>
+				<hr>
+					AP Settings<br>
+					<form action="/wifi_param"  method="post">						
+						<label for="wifi_ssid">SSID: </label><br>
+						<input type="text" name="wifi_ssid" required value=""><br>
+						<label for="wifi_pass">Password: </label><br>
+						<input type="password" required name="wifi_pass"><br><br>
+						<input type="submit" value="Confirm">
+					</form>
+				<hr>
+				<br><br>
+				<a href='/update'><button>Firmware...</button></a>
+			</div>
+		</div>		
+			
+		<script>
+			//var xmlHttp = createXmlHttpObject();
+			// Get the element with id="defaultOpen" and click on it
+			document.getElementById("defaultOpen").click();
+			var xmlHttp = new XMLHttpRequest();
+
+			var Voltage;
+
+			var Current = 0;
+			var Power = 0;
+			var Energy = 0;
+			var PowerFactor = 0;
+			var Frequency = 0;	
+
+			function setCurrentGaugeRange(maxCurrent) {
+				currentGauge.maxValue = maxCurrent;
+				currentGauge.update();
+			}
+
+			function process() {
+				if((xmlHttp.readyState == 0) || (xmlHttp.readyState == 4)) {
+					xmlHttp.onreadystatechange = function() {
+						if((xmlHttp.readyState == 4) && (xmlHttp.status == 200)) {
+							xmlDoc = xmlHttp.responseXML;
+
+							xmlmsg = xmlDoc.getElementsByTagName('voltage')[0].firstChild.nodeValue;
+							Voltage = xmlmsg / 10.0;
+
+							xmlmsg = xmlDoc.getElementsByTagName('current')[0].firstChild.nodeValue;
+							Current = xmlmsg / 1000.0;
+
+							xmlmsg = xmlDoc.getElementsByTagName('power')[0].firstChild.nodeValue;
+							Power = xmlmsg / 10000.0;
+
+							xmlmsg = xmlDoc.getElementsByTagName('energy')[0].firstChild.nodeValue;
+							Energy = xmlmsg / 1000.0;
+
+							xmlmsg = xmlDoc.getElementsByTagName('pf')[0].firstChild.nodeValue;
+							PowerFactor = xmlmsg / 100.0;
+
+							xmlmsg = xmlDoc.getElementsByTagName('freq')[0].firstChild.nodeValue;
+							Frequency = xmlmsg / 10.0;
+
+							//console.log(Voltage);		
+
+							document.getElementById('voltageGaugeNum').innerHTML = Voltage;	
+							document.getElementById('currentGaugeNum').innerHTML = Current;	
+							document.getElementById('powerGaugeNum').innerHTML = Power;	
+							document.getElementById('pfGaugeNum').innerHTML = PowerFactor;	
+							document.getElementById('freqGaugeNum').innerHTML = Frequency;	
+							document.getElementById('energyGaugeNum').innerHTML = Energy;	
+
+							if((Current >= 0.0) && (Current <= 1.0)) setCurrentGaugeRange(1);
+							if((Current >= 1.0) && (Current <= 5.0)) setCurrentGaugeRange(5);
+							if((Current >= 5.0) && (Current <= 10.0)) setCurrentGaugeRange(10);
+							if((Current >= 10.0) && (Current <= 20.0)) setCurrentGaugeRange(20);
+
+							voltageGauge.set(Voltage);
+							currentGauge.set(Current);
+							freqGauge.set(Frequency);
+							pfGauge.set(PowerFactor);
+							powerGauge.set(Power);
+						}
+					}
+					xmlHttp.open('PUT', 'xml', true);
+					xmlHttp.send(null);
+				}
+				setTimeout('process()', 1000);	// таймаут запроса XML
+			}	
+		
+			function push_butt(suf) {	
+				if((xmlHttp.readyState == 0) || (xmlHttp.readyState == 4)) {
+					xmlHttp.open('PUT', 'pushButt?buttID=' + suf);
+					xmlHttp.send();
+				}
+			}
+
+			var curTabName = "";
+			function openTab(evt, tabName) {
+				var i, tabcontent, tablinks;
+				tabcontent = document.getElementsByClassName("tabcontent");
+				for (i = 0; i < tabcontent.length; i++) {
+					tabcontent[i].style.display = "none";
+				}
+				tablinks = document.getElementsByClassName("tablinks");
+				for (i = 0; i < tablinks.length; i++) {
+					tablinks[i].className = tablinks[i].className.replace(" active", "");
+				}
+				document.getElementById(tabName).style.display = "block";
+				evt.currentTarget.className += " active";
+				curTabName = tabName;
+			}			
+
+			var target = document.getElementById('voltageGauge');
+			var voltageGauge = new Gauge(target).setOptions(voltageOpts);
+			voltageGauge.maxValue = 240;
+			voltageGauge.setMinValue(200);
+			voltageGauge.animationSpeed = 10;
+			voltageGauge.set(0);
+
+			target = document.getElementById('currentGauge');
+			var currentGauge = new Gauge(target).setOptions(currentOpts);
+			currentGauge.maxValue = 10;
+			currentGauge.setMinValue(0);
+			currentGauge.animationSpeed = 10;
+			currentGauge.set(0);
+
+			target = document.getElementById('powerGauge');
+			var powerGauge = new Gauge(target).setOptions(powerOpts);
+			powerGauge.maxValue = 2;
+			powerGauge.setMinValue(0);
+			powerGauge.animationSpeed = 10;
+			powerGauge.set(0);
+
+			target = document.getElementById('pfGauge');
+			var pfGauge = new Gauge(target).setOptions(pfOpts);
+			pfGauge.maxValue = 1;
+			pfGauge.setMinValue(0);
+			pfGauge.animationSpeed = 10;
+			pfGauge.set(0);
+			
+			target = document.getElementById('freqGauge');
+			var freqGauge = new Gauge(target).setOptions(freqOpts);
+			freqGauge.maxValue = 51;
+			freqGauge.setMinValue(49);
+			freqGauge.animationSpeed = 10;
+			freqGauge.set(0);
+
+		</script>
+	</body>
+</html> 

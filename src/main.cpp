@@ -24,7 +24,7 @@
 #define T_FTP_STACK         8192
 
 #define T_PZEM_CPU          CPU0
-#define T_PZEM_PRIOR        0
+#define T_PZEM_PRIOR        1
 #define T_PZEM_STACK        4096
 
 #define AP_SSID             "PMeter"
@@ -32,7 +32,7 @@
 #define FTP_USER            "esp32"
 #define FTP_PASS            "esp32"
 
-TaskHandle_t th_WiFiConn, th_WEBServer, th_TFTServer, th_PZEMPoll, th_PZEMReceive;
+TaskHandle_t th_WiFiConn, th_WEBServer, th_TFTServer, th_PZEMPoll;
 QueueHandle_t qh_PZEMData, qh_ResetPZEMEnergy;
 
 #define swRxD 23
@@ -95,7 +95,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println(String("CPU frequncy: ") + ets_get_cpu_frequency());
   Serial.println();
-  qh_PZEMData = xQueueCreate(10, sizeof(PZEMData));
+  qh_PZEMData = xQueueCreate(1, sizeof(PZEMData));
   qh_ResetPZEMEnergy = xQueueCreate(1, sizeof(b_PZEMRst));
   xTaskCreatePinnedToCore(task_WiFiConn, "WiFi Connect", T_WIFIConn_STACK, NULL, T_WIFIConn_PRIOR, &th_WiFiConn, T_WIFIConn_CPU);
 }
@@ -141,7 +141,6 @@ void task_WiFiConn(void *param) {
       Serial.print(F("Local IP address: ")); Serial.println(myIP);
       WiFi.enableAP(false);
     }
-
   }  
 
   if(SPIFFS.begin(true)) {
@@ -155,19 +154,15 @@ void task_WiFiConn(void *param) {
   xTaskCreatePinnedToCore(task_WEBServer, "WEB Server", T_WEBServer_STACK, NULL, T_WEBServer_PRIOR, &th_WEBServer, T_WEBServer_CPU);
   vTaskDelay(pdMS_TO_TICKS(10));
 
-  /*xTaskCreatePinnedToCore(task_FTPSrv, "FTP Server", T_FTP_STACK, NULL, T_FTP_PRIOR, &th_TFTServer, T_FTP_CPU);
-  vTaskDelay(pdMS_TO_TICKS(10));  */
+  xTaskCreatePinnedToCore(task_FTPSrv, "FTP Server", T_FTP_STACK, NULL, T_FTP_PRIOR, &th_TFTServer, T_FTP_CPU);
+  vTaskDelay(pdMS_TO_TICKS(10));
 
   xTaskCreatePinnedToCore(task_PZEMPoll, "PZEM polling", T_PZEM_STACK, NULL, T_PZEM_PRIOR, &th_PZEMPoll, T_PZEM_CPU);
   vTaskDelay(pdMS_TO_TICKS(10));  
 
-  /*xTaskCreatePinnedToCore(task_PZEMReceive, "PZEM receive data", T_PZEMR_STACK, NULL, T_PZEMR_PRIOR, &th_PZEMReceive, T_PZEMR_CPU);
-  vTaskDelay(pdMS_TO_TICKS(10));*/
-
-  //vTaskDelete(NULL);
-  yield();
   for(;;) {
-    //vTaskDelete(NULL);
+    yield();
+    vTaskDelete(NULL);
   }
 }
 
@@ -200,6 +195,7 @@ void task_FTPSrv(void *param) {
   const char cch_ftpPass[] = FTP_PASS;
   ftpSrv.begin(cch_ftpUser, cch_ftpPass); 
   for(;;) {
+    yield();
     ftpSrv.handleFTP();
     vTaskDelay(pdMS_TO_TICKS(1));
   }
@@ -217,7 +213,13 @@ void task_PZEMPoll(void *param) {
     if(pzem_poll(&pd)) {
       xQueueSend(qh_PZEMData, &pd, 0);
     }
-    vTaskDelay(pdMS_TO_TICKS(250));
+    BaseType_t ret;
+    ret = xQueueReceive(qh_ResetPZEMEnergy, &b_PZEMRst, 0);
+    if(ret == pdPASS) {
+      b_PZEMRst = false;
+      pzem_reset_energy();
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
@@ -228,7 +230,7 @@ String build_XML() {
   PZEMData gPD;
   ret = xQueueReceive(qh_PZEMData, &gPD, 0);
   if(ret == pdPASS) {
-    print_pzemData(&gPD);    
+    //print_pzemData(&gPD);    
 
     xmlStr = F("<?xml version='1.0'?>");
     xmlStr += F("<xml>");
@@ -277,11 +279,6 @@ void setMinMaxVoltage(PZEMData pd) {
   if(pd.iVoltage > pd.iVoltageMax) {
     pd.iVoltageMax = pd.iVoltage;
   }
-  // pzemData.iVoltageMin = 321;
-  // pzemData.iVoltageMax = 654;
-  /*Serial.println(String("Voltage: ") + pzemData.iVoltage);
-  Serial.println(String("Voltage MIN: ") + pzemData.iVoltageMin);
-  Serial.println(String("Voltage MAX: ") + pzemData.iVoltageMax);*/
 }
 
 bool loadFromSpiffs(String path) {
@@ -289,7 +286,6 @@ bool loadFromSpiffs(String path) {
   Serial.println(path);
   String dataType = F("text/plain");
   if(path.endsWith(F("/"))) path += F("index.html");
-
   if(path.endsWith(F(".src"))) path = path.substring(0, path.lastIndexOf(F(".")));
   else if(path.endsWith(F(".html"))) dataType = F("text/html");
   else if(path.endsWith(F(".htm"))) dataType = F("text/html");
@@ -302,12 +298,22 @@ bool loadFromSpiffs(String path) {
   else if(path.endsWith(F(".xml"))) dataType = F("text/xml");
   else if(path.endsWith(F(".pdf"))) dataType = F("application/pdf");
   else if(path.endsWith(F(".zip"))) dataType = F("application/zip");
+
+  if(dataType != "text/xml") {
+    vTaskSuspend(th_PZEMPoll);
+    vTaskSuspend(th_TFTServer);
+  }
+
   File dataFile = SPIFFS.open(path.c_str(), "r");
   Serial.print(F("Load File: "));
   Serial.println(dataFile.name());
   if (server.hasArg(F("download"))) dataType = F("application/octet-stream");
   if (server.streamFile(dataFile, dataType) != dataFile.size()) {}
   dataFile.close();
+
+  vTaskResume(th_PZEMPoll);
+  vTaskResume(th_TFTServer);
+
   return true;
 }
 
@@ -396,12 +402,6 @@ void pzem_send(uint8_t* txData, uint8_t len) {
   uint16_t crc = GetCRC16(txData, (len - 2));
   txData[len - 2] = crc & 0xFF; // Low byte first
   txData[len - 1] = (crc >> 8) & 0xFF; // High byte second
-  /*Serial.println(String("CRC16: ") + String(crc, HEX));
-  Serial.print("TxPack: ");
-  for(int i = 0; i < len; i++) {
-    Serial.print(String(" ") + String(txData[i], HEX));
-  }
-  Serial.println("");*/
   swSerial.write(txData, len);
 }
 
@@ -409,23 +409,19 @@ bool pzem_receive(uint8_t* rxData, uint8_t len) {
   for(int i = 0; i < len; i++) rxData[i] = 0x00;
   unsigned long startTime = millis();
   int index = 0;
-  while((index < len) && (millis() - startTime < 80)) {
+  while((index < len) && ((millis() - startTime) < 80)) {
     yield();	// do background netw tasks while blocked for IO (prevents ESP watchdog trigger)
     if(swSerial.available() > 0) {
         uint8_t c = (uint8_t)swSerial.read();
         rxData[index++] = c;
     }
   }
-  /*Serial.print("RxPack: ");
-  for(int i = 0; i < len; i++) {
-    Serial.print(String(" ") + String(rxData[i], HEX));
-  }
-  Serial.println("");*/
   if(GetCRC16(rxData, (len - 2)) == ((rxData[len - 1] << 8) + rxData[len - 2])) return true;
   else return false;
 }
 
 void pzem_reset_energy() {
+  Serial.println("Try reset energy");
   uint8_t buff[4] = {0xF8, 0x42, 0x00, 0x00};
   pzem_send(buff, 4);
   pzem_receive(buff, 4);
@@ -520,11 +516,11 @@ bool pzem_poll(PZEMData* pd) {
 //	eDeleted		/*!< The task being queried has been deleted, but its TCB has not yet been freed. */
 
 void print_task_state(String taskName, int state) {
-  const String tStae[] = {"eRunning", "eReady", "eBlocked", "eSuspended", "eDeleted"};
+  const String tState[] = {"eRunning", "eReady", "eBlocked", "eSuspended", "eDeleted"};
   Serial.print(F("Task "));
   Serial.print(taskName);
   Serial.print(F(" state: "));
-  Serial.println(tStae[state]);
+  Serial.println(tState[state]);
 }
 
 void ap_config() {
